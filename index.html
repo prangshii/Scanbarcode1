@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Scanner Matcher</title>
+    <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; transition: background 0.3s; }
+        #video-container { width: 100%; max-width: 400px; margin: 0 auto; display: none; }
+        video { width: 100%; border: 2px solid #333; }
+        .result-box { margin-top: 20px; padding: 15px; border-radius: 10px; display: none; }
+        button { padding: 15px 30px; font-size: 18px; margin-top: 20px; cursor: pointer; }
+        .match { background-color: #c8e6c9; color: #2e7d32; }
+        .mismatch { background-color: #ffcdd2; color: #c62828; }
+    </style>
+</head>
+<body>
+
+    <h1>Barcode Matcher</h1>
+    
+    <div id="status">กดปุ่มเพื่อเริ่มสแกนบาร์โค้ดอันแรก</div>
+    
+    <button id="startScan">เริ่มสแกน</button>
+
+    <div id="video-container">
+        <video id="video"></video>
+    </div>
+
+    <div id="resultBox" class="result-box">
+        <h2 id="resultText"></h2>
+        <p id="barcode1Display"></p>
+        <p id="barcode2Display"></p>
+    </div>
+
+    <script>
+        let codeReader;
+        let barcode1 = "";
+        let barcode2 = "";
+        let step = 1; // 1 = scan first, 2 = scan second
+
+        const startScanBtn = document.getElementById('startScan');
+        const statusDiv = document.getElementById('status');
+        const videoContainer = document.getElementById('video-container');
+        const resultBox = document.getElementById('resultBox');
+
+        startScanBtn.addEventListener('click', () => {
+            startScanBtn.style.display = 'none';
+            videoContainer.style.display = 'block';
+            resultBox.style.display = 'none';
+            document.body.style.backgroundColor = "white";
+            startDecoding();
+        });
+
+        function startDecoding() {
+            codeReader = new ZXing.BrowserMultiFormatReader();
+            statusDiv.innerText = `กำลังสแกนอันที่ ${step}...`;
+
+            codeReader.listVideoInputDevices()
+                .then((videoInputDevices) => {
+                    // เลือกกล้องหลัง (ตัวอย่างนี้เลือกตัวแรก ถ้าไม่ใช่ให้เปลี่ยน index)
+                    const firstDeviceId = videoInputDevices[0].deviceId;
+                    
+                    codeReader.decodeFromVideoDevice(firstDeviceId, 'video', (result, err) => {
+                        if (result) {
+                            handleBarcodeResult(result.text);
+                        }
+                    });
+                })
+                .catch((err) => console.error(err));
+        }
+
+        function handleBarcodeResult(text) {
+            codeReader.reset(); // หยุดกล้องชั่วคราว
+            
+            if (step === 1) {
+                barcode1 = text;
+                statusDiv.innerText = `อันที่ 1: ${barcode1} | สแกนอันที่ 2 ต่อได้เลย`;
+                step = 2;
+                setTimeout(startDecoding, 1000); // เริ่มใหม่ใน 1 วินาที
+            } else {
+                barcode2 = text;
+                videoContainer.style.display = 'none';
+                compareBarcodes();
+            }
+        }
+
+        function compareBarcodes() {
+            startScanBtn.style.display = 'inline-block';
+            resultBox.style.display = 'block';
+            
+            document.getElementById('barcode1Display').innerText = `อันที่ 1: ${barcode1}`;
+            document.getElementById('barcode2Display').innerText = `อันที่ 2: ${barcode2}`;
+
+            if (barcode1 === barcode2) {
+                document.body.style.backgroundColor = "#c8e6c9";
+                document.getElementById('resultText').innerText = "✅ ตรงกัน!";
+            } else {
+                document.body.style.backgroundColor = "#ffcdd2";
+                document.getElementById('resultText').innerText = "❌ ไม่ตรงกัน!";
+            }
+            
+            // รีเซ็ตเพื่อสแกนใหม่
+            step = 1;
+            barcode1 = "";
+            barcode2 = "";
+        }
+    </script>
+</body>
+</html>
