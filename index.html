@@ -3,14 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Barcode Scanner Matcher</title>
+    <title>Barcode Scanner Matcher Pro</title>
     <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; transition: background 0.3s; }
-        #video-container { width: 100%; max-width: 400px; margin: 0 auto; display: none; }
-        video { width: 100%; border: 2px solid #333; }
-        .result-box { margin-top: 20px; padding: 15px; border-radius: 10px; display: none; }
-        button { padding: 15px 30px; font-size: 18px; margin-top: 20px; cursor: pointer; }
+        body { font-family: sans-serif; text-align: center; padding: 10px; transition: background 0.3s; }
+        #video-container { width: 100%; max-width: 400px; margin: 0 auto; position: relative; display: none; }
+        video { width: 100%; border: 2px solid #333; background: #000; }
+        
+        .button-group { margin-top: 10px; }
+        button { padding: 10px 20px; font-size: 16px; margin: 5px; cursor: pointer; }
+        
+        #resultBox { margin-top: 20px; padding: 15px; border-radius: 10px; display: none; }
         .match { background-color: #c8e6c9; color: #2e7d32; }
         .mismatch { background-color: #ffcdd2; color: #c62828; }
     </style>
@@ -18,13 +21,16 @@
 <body>
 
     <h1>Barcode Matcher</h1>
-    
-    <div id="status">กดปุ่มเพื่อเริ่มสแกนบาร์โค้ดอันแรก</div>
+    <div id="status">กดปุ่มเริ่มสแกน</div>
     
     <button id="startScan">เริ่มสแกน</button>
 
     <div id="video-container">
         <video id="video"></video>
+        <div class="button-group">
+            <button id="toggleTorch">💡 แฟลช</button>
+            <button id="switchCamera">🔄 สลับกล้อง</button>
+        </div>
     </div>
 
     <div id="resultBox" class="result-box">
@@ -37,47 +43,62 @@
         let codeReader;
         let barcode1 = "";
         let barcode2 = "";
-        let step = 1; // 1 = scan first, 2 = scan second
+        let step = 1;
+        let isTorchOn = false;
+        let currentDeviceId = null;
+        let videoInputDevices = [];
 
         const startScanBtn = document.getElementById('startScan');
-        const statusDiv = document.getElementById('status');
         const videoContainer = document.getElementById('video-container');
-        const resultBox = document.getElementById('resultBox');
+        const statusDiv = document.getElementById('status');
+        const toggleTorchBtn = document.getElementById('toggleTorch');
+        const switchCameraBtn = document.getElementById('switchCamera');
 
-        startScanBtn.addEventListener('click', () => {
+        // เริ่มต้น ZXing Reader
+        codeReader = new ZXing.BrowserMultiFormatReader();
+
+        startScanBtn.addEventListener('click', startDecoding);
+        toggleTorchBtn.addEventListener('click', toggleTorch);
+        switchCameraBtn.addEventListener('click', switchCamera);
+
+        function startDecoding(deviceId = undefined) {
             startScanBtn.style.display = 'none';
             videoContainer.style.display = 'block';
-            resultBox.style.display = 'none';
+            document.getElementById('resultBox').style.display = 'none';
             document.body.style.backgroundColor = "white";
-            startDecoding();
-        });
-
-        function startDecoding() {
-            codeReader = new ZXing.BrowserMultiFormatReader();
             statusDiv.innerText = `กำลังสแกนอันที่ ${step}...`;
 
+            // ตรวจสอบอุปกรณ์กล้อง
             codeReader.listVideoInputDevices()
-                .then((videoInputDevices) => {
-                    // เลือกกล้องหลัง (ตัวอย่างนี้เลือกตัวแรก ถ้าไม่ใช่ให้เปลี่ยน index)
-                    const firstDeviceId = videoInputDevices[0].deviceId;
-                    
-                    codeReader.decodeFromVideoDevice(firstDeviceId, 'video', (result, err) => {
+                .then((devices) => {
+                    videoInputDevices = devices;
+                    // พยายามเลือกกล้องหลัง
+                    if (!deviceId && devices.length > 0) {
+                        currentDeviceId = devices[devices.length - 1].deviceId; // มักจะเป็นกล้องหลัง
+                    } else {
+                        currentDeviceId = deviceId;
+                    }
+
+                    codeReader.decodeFromVideoDevice(currentDeviceId, 'video', (result, err) => {
                         if (result) {
                             handleBarcodeResult(result.text);
                         }
                     });
                 })
-                .catch((err) => console.error(err));
+                .catch((err) => {
+                    console.error(err);
+                    statusDiv.innerText = "Error: ไม่สามารถเข้าถึงกล้องได้";
+                });
         }
 
         function handleBarcodeResult(text) {
-            codeReader.reset(); // หยุดกล้องชั่วคราว
+            codeReader.reset(); // หยุดสแกนเพื่อประมวลผล
             
             if (step === 1) {
                 barcode1 = text;
-                statusDiv.innerText = `อันที่ 1: ${barcode1} | สแกนอันที่ 2 ต่อได้เลย`;
+                statusDiv.innerText = `เจออันที่ 1: ${barcode1} | สแกนอันที่ 2 ต่อเลย`;
                 step = 2;
-                setTimeout(startDecoding, 1000); // เริ่มใหม่ใน 1 วินาที
+                setTimeout(() => startDecoding(currentDeviceId), 1000); 
             } else {
                 barcode2 = text;
                 videoContainer.style.display = 'none';
@@ -85,9 +106,27 @@
             }
         }
 
+        function toggleTorch() {
+            const tracks = document.getElementById('video').srcObject.getVideoTracks();
+            if (tracks.length > 0) {
+                isTorchOn = !isTorchOn;
+                tracks[0].applyConstraints({ advanced: [{ torch: isTorchOn }] });
+                toggleTorchBtn.innerText = isTorchOn ? "💡 ปิดแฟลช" : "💡 เปิดแฟลช";
+            }
+        }
+
+        function switchCamera() {
+            codeReader.reset();
+            // หา index ของกล้องปัจจุบัน แล้วสลับไปอีกตัว
+            const currentIndex = videoInputDevices.findIndex(d => d.deviceId === currentDeviceId);
+            const nextIndex = (currentIndex + 1) % videoInputDevices.length;
+            startDecoding(videoInputDevices[nextIndex].deviceId);
+        }
+
         function compareBarcodes() {
             startScanBtn.style.display = 'inline-block';
-            resultBox.style.display = 'block';
+            startScanBtn.innerText = "เริ่มสแกนใหม่";
+            document.getElementById('resultBox').style.display = 'block';
             
             document.getElementById('barcode1Display').innerText = `อันที่ 1: ${barcode1}`;
             document.getElementById('barcode2Display').innerText = `อันที่ 2: ${barcode2}`;
@@ -99,11 +138,7 @@
                 document.body.style.backgroundColor = "#ffcdd2";
                 document.getElementById('resultText').innerText = "❌ ไม่ตรงกัน!";
             }
-            
-            // รีเซ็ตเพื่อสแกนใหม่
             step = 1;
-            barcode1 = "";
-            barcode2 = "";
         }
     </script>
 </body>
